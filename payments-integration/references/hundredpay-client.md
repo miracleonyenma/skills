@@ -1,4 +1,24 @@
-# 100Pay Client Integration (Current Pattern)
+# 100Pay Client Integration
+
+This document covers a reusable client-side checkout pattern and then maps it
+to the current repository.
+
+## Generic Pattern
+
+1. Receive checkout payload from server initiate endpoint.
+2. Launch provider SDK/hosted checkout with that payload.
+3. Treat callback as a signal only.
+4. Verify final settlement through server endpoint(s).
+5. Deduplicate callback paths and keep UX deterministic.
+
+## Security Boundary
+
+- Never place provider secret keys in browser code.
+- Only use public SDK keys on the client.
+- Verify settlement on the server before irreversible success UX.
+- Avoid logging full callback payloads in production clients.
+
+## Repository Mapping
 
 Client integration in this repository is centralized in:
 
@@ -11,7 +31,7 @@ The helper wraps `shop100Pay.setup` from `@100pay-hq/checkout` and standardizes:
 - Modal close on successful callback signal
 - Error and close callbacks for feature flows
 
-## Shared Helper
+## Shared Helper (Repository)
 
 ```ts
 // apps/web/utils/payWith100Pay.ts
@@ -120,6 +140,15 @@ Pattern:
 3. Use server-issued `result.reference` as primary reference; callback reference is fallback.
 4. Keep callback UX resilient to webhook races using polling or verify endpoint.
 5. Close the modal on callback to avoid stuck checkout state in UI.
+
+## Important Repository Note
+
+Current helper behavior sets `call_back_url` from
+`NEXT_PUBLIC_100PAY_CALLBACK_URL` (fallback `/api/webhooks/100pay`) and does
+not currently read a callback URL field from the initiate payload.
+
+For portable implementations, prefer passing callback URL from the server
+initiate response so callback destinations stay server-authoritative.
 
 ## Callback Relay Page (Wallet)
 

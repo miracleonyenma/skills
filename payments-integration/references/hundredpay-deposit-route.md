@@ -1,17 +1,30 @@
 # 100Pay Initiate + Verify Server Flows
 
+This document describes a reusable server pattern first, then maps to concrete
+routes in this repository.
+
+## Generic Pattern
+
+1. `initiate` endpoint validates intent and creates/resumes pending transaction.
+2. Server generates provider reference and server-authoritative checkout payload.
+3. Client callback triggers `verify` or `by-reference` polling endpoint.
+4. Webhook remains authoritative and idempotent for settlement.
+5. Domain side effects run only after settlement.
+
+## Repository Mapping
+
 This repository implements 100Pay in the Express payments router:
 
 - `apps/api/src/routes/payments.ts`
 - `apps/api/src/services/payment/hundredpay.service.ts`
 
-Base path:
+Repository base path:
 
 - `/v1/payments`
 
 ## 1) Wallet top-up initiate
 
-Route:
+Repository route:
 
 - `POST /v1/payments/wallet-topups/initiate`
 
@@ -24,24 +37,23 @@ What it does:
 5. Builds server-authoritative customer identity from DB user data.
 6. Resumes recent pending 100Pay checkout (same amount/currency, age < 30 min).
 7. Otherwise creates a new reference and creates 100Pay charge.
-8. Persists pending `Transaction` with provider metadata and hosted URL.
+8. Persists a pending payment record with provider metadata and hosted URL.
 9. Returns:
    - `reference`
    - `hostedUrl`
    - `resumed`
    - `checkout` payload used by client SDK launcher
 
-Core metadata fields used later:
+Core metadata should include enough context to:
 
-- `meta.kind = "wallet_topup"`
-- `meta.provider = "100pay"`
-- `meta.providerChargeId`
-- `meta.hostedUrl`
-- `meta.currency`, `meta.country`, `meta.callbackUrl`
+- identify payment intent/type
+- identify provider
+- locate hosted checkout URL
+- track currency/country/callback context
 
 ## 2) Wallet top-up verify
 
-Route:
+Repository route:
 
 - `POST /v1/payments/wallet-topups/verify`
 
@@ -50,11 +62,11 @@ What it does:
 1. Accepts `transactionId` and/or `reference`.
 2. Tries `hundredPayService.verifyTransaction(transactionId)` first.
 3. Falls back to `verifyChargeByReference(reference)` if needed.
-4. Extracts normalized verification payload (`extractHundredPayVerificationPayload`).
+4. Extracts and normalizes provider verification payload.
 5. Verifies resolved reference belongs to current user and pending top-up transaction.
 6. Rejects mismatched or missing references.
-7. If provider status is still pending/not settled, updates `meta.paymentStatus` and returns 409.
-8. If settled, calls `settleSuccessfulHundredPayCreditTransaction(...)`.
+7. If provider status is still pending/not settled, records the provider status and returns 409.
+8. If settled, runs settlement logic exactly once.
 9. Returns credited amount/currency from resolved metadata.
 
 Why this route exists:
@@ -63,7 +75,7 @@ Why this route exists:
 
 ## 3) Number rental deposit initiate
 
-Route:
+Repository route:
 
 - `POST /v1/payments/rental-deposits/initiate`
 
@@ -75,7 +87,7 @@ What it does:
 4. Builds 100Pay charge payload with metadata:
    - `kind = "number_rental_deposit"`
    - `numberId`, `platformId`, `idempotencyKey`, `userId`, `provider`
-5. Creates pending transaction with `meta.kind = number_rental_deposit`.
+5. Creates pending transaction tagged as rental-deposit intent.
 6. Returns `checkout` payload for client SDK and reference for polling.
 
 Also supports:
@@ -85,7 +97,7 @@ Also supports:
 
 ## 4) Rental extension deposit initiate
 
-Route:
+Repository route:
 
 - `POST /v1/payments/rental-extension-deposits/initiate`
 
@@ -101,18 +113,25 @@ What it does:
 
 ## 5) By-reference confirmation endpoints (used by client pollers)
 
-Routes:
+Repository routes:
 
 - `GET /v1/payments/rental-deposits/by-reference`
 - `GET /v1/payments/rental-extension-deposits/by-reference`
 
-These routes bridge callback -> settlement races by exposing eventual business state:
+These routes bridge callback -> settlement races by exposing eventual business
+state:
 
 - Rental deposit success state: `rental_created`
 - Extension deposit success state: `extension_applied`
 - Otherwise returns transaction state (`pending`, `successful`, `failed`, `reversed`)
 
 Client checkout callback pages poll these endpoints until terminal state.
+
+Generic note:
+
+- Your project can use one unified `/verify` route, multiple `by-reference`
+   routes, or both.
+- Status labels (`rental_created`, `extension_applied`) are domain-specific.
 
 ## 6) 100Pay service wrapper
 

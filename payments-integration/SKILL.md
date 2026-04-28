@@ -5,8 +5,21 @@ description: 'Implement deposits, checkout initialization, callback verification
 
 # Payments Integration (Paystack + 100Pay)
 
-This skill documents production patterns used in this repository for handling
-payments end-to-end, with focus on 100Pay flows implemented across:
+This skill documents production payment patterns that are reusable across
+projects. It also includes a concrete mapping to this repository so examples
+stay grounded in real code.
+
+## Open-Source Safety
+
+Use these docs as public guidance, but keep operational details private:
+
+1. Never publish real API keys, webhook secrets, or signed payload samples.
+2. Keep only placeholder domains and values in examples (`example.com`, `pk_xxx`, `sk_xxx`).
+3. Do not include real user identifiers, phone numbers, or email addresses in docs.
+4. Do not publish production incident IDs, internal ticket links, or private dashboards.
+5. Treat callback and webhook payload logs as potentially sensitive; redact before sharing.
+
+Repository example files:
 
 - `apps/api/src/routes/payments.ts`
 - `apps/api/src/services/payment/hundredpay.service.ts`
@@ -28,23 +41,31 @@ Use this skill when you need to:
 
 ## Mental Model
 
-In this implementation, payment success is not a single event. It is a staged
-lifecycle:
+Payment success is not a single event. It is a staged lifecycle:
 
-1. Server init route creates (or resumes) a pending transaction.
-2. Client opens provider checkout.
-3. Client callback is treated as a signal, not final settlement.
-4. Server webhook performs authoritative settlement.
-5. Client polls by reference to observe terminal state and redirect UX.
+Generic flow:
+
+```
+Client -> POST /payments/.../initiate -> pending tx + reference
+       -> provider checkout SDK or hosted URL
+       -> callback signal (not final settlement)
+       -> verify/poll endpoint by reference
+Webhook -> POST /payments/webhooks/provider
+    -> auth signature/token
+    -> dedupe event
+    -> settle tx + apply domain side effects
+```
+
+Repository example:
 
 ```
 Client -> POST /v1/payments/.../initiate -> pending Transaction + reference
-       -> 100Pay modal (shop100Pay.setup)
-       -> callback/onPayment signal
-       -> GET /v1/payments/.../by-reference (poll)
+   -> 100Pay modal (shop100Pay.setup)
+   -> callback/onPayment signal
+   -> GET /v1/payments/.../by-reference (poll)
 Webhook -> POST /v1/payments/webhooks/100pay
-        -> verify token, dedupe event, settle transaction
-        -> create rental/apply extension/credit wallet
+    -> verify token, dedupe event, settle transaction
+    -> create rental/apply extension/credit wallet
 ```
 
 ## Golden Rules
@@ -56,9 +77,9 @@ Webhook -> POST /v1/payments/webhooks/100pay
 5. Dedupe webhook events (`meta.processedPaymentEventIds`) and callback triggers.
 6. Release side effects on failure states (for rental deposits, release number reservation).
 
-## Current Route Surface (Repository)
+## Current Route Surface (Repository Example)
 
-100Pay-relevant server routes:
+Example 100Pay route shape used in this repository:
 
 - `POST /v1/payments/wallet-topups/initiate`
 - `POST /v1/payments/wallet-topups/verify`
@@ -93,18 +114,26 @@ Webhook -> POST /v1/payments/webhooks/100pay
    - `hostedUrl`
    - `resumed`
    - `checkout` payload (customer, billing, metadata)
-3. Client launches `payWith100Pay` with checkout payload from server.
+3. Client launches provider checkout from server-authoritative payload.
 4. Client callback triggers verification/poll by reference.
 5. Webhook verifies `verification-token` and settles pending transaction.
 6. By-reference endpoints expose eventual business state (`rental_created`, `extension_applied`, or pending/failed/reversed).
 7. UI redirects only after by-reference confirms terminal success.
+8. All documentation examples use sanitized values and non-production domains.
+
+Generic note:
+
+- Path names, event names, and status names vary by provider and platform.
+- Keep the flow shape, not the literal route names.
 
 ## Debugging Procedure
 
-1. Query `Transaction` by `reference` and inspect `status`, `meta.kind`, `meta.provider`, `meta.paymentStatus`, `meta.processedPaymentEventIds`.
-2. Confirm webhook token is valid and `POST /v1/payments/webhooks/100pay` is receiving events.
-3. Confirm callback path uses the correct reference and poll endpoint.
-4. For rental deposits, verify reservation release/creation side effects:
-   - `PhoneNumber.status` transitions (`available` -> `reserved` -> `rented` or rollback)
-   - `meta.rentalCreated` and `meta.rentalId`
-5. For extension deposits, verify `meta.extensionApplied` and rental idempotency keys.
+1. Query payment records by `reference` and inspect lifecycle state transitions.
+2. Confirm webhook auth is valid and webhook events are being received.
+3. Confirm callback path uses the correct reference and verify/poll endpoint.
+4. Verify failure paths release reservations/locks and success paths apply domain side effects exactly once.
+5. Verify idempotency markers prevent duplicate settlement and duplicate side effects.
+
+Public note:
+
+- Keep low-level schema names and internal persistence field names in private runbooks, not in public docs.

@@ -1,4 +1,36 @@
-# Env Vars and Setup (Current 100Pay Implementation)
+# Env Vars and Setup
+
+This document lists required configuration categories for any integration,
+then provides exact variable names used in this repository.
+
+All values in this document are placeholders. Do not copy example secrets into
+source control.
+
+## Publish-Safe Rules
+
+- Commit only variable names to `.env.example`, never real values.
+- Keep provider secret keys and webhook secrets server-side only.
+- Only `NEXT_PUBLIC_*` values should be readable by client code.
+- Redact secrets from logs, screenshots, and issue reports.
+
+## Generic Configuration Categories
+
+Server:
+
+- Provider public key (if required by server library)
+- Provider secret key
+- Webhook signing secret/token
+- Provider request timeout/retry tuning
+- App frontend/base URL
+- App API/base URL
+
+Client:
+
+- Provider public key for browser SDK
+- API base URL
+- Optional callback URL override (only if SDK requires a browser callback URL)
+
+## Repository Variables
 
 ## Required Environment Variables
 
@@ -17,7 +49,7 @@ PAYSTACK_WEBHOOK_SECRET=whsec_xxx
 
 # App routing
 FRONTEND_URL=https://app.example.com
-NEXT_PUBLIC_API_URL=https://api.example.com
+API_URL=https://api.example.com
 ```
 
 Client-side (web):
@@ -33,8 +65,9 @@ Notes:
 - `NEXT_PUBLIC_HUNDREDPAY_API_KEY` is used by `@100pay-hq/checkout` on the web.
 - `HUNDREDPAY_SECRET_API_KEY` is used for server-side verification calls.
 - `HUNDREDPAY_WEBHOOK_SECRET` must match provider webhook token.
+- `API_URL` and `FRONTEND_URL` should point to your deployment domains.
 
-## Route Wiring
+## Route Wiring (Repository)
 
 API payment routes are mounted under:
 
@@ -46,7 +79,7 @@ Web app rewrites API calls:
 
 This allows frontend code to call `/api/v1/payments/...` while backend lives on a separate origin.
 
-## 100Pay Endpoints to Configure
+## 100Pay Endpoints to Configure (Repository Example)
 
 Webhook URL in 100Pay dashboard:
 
@@ -55,6 +88,13 @@ Webhook URL in 100Pay dashboard:
 Provider callback relay URL (server-generated via `buildPaymentCallbackUrl`):
 
 - `https://api.example.com/v1/payments/callback?returnPath=...`
+
+Important note:
+
+- In this repository, checkout calls currently set `call_back_url` in the web
+ helper from `NEXT_PUBLIC_100PAY_CALLBACK_URL` (fallback
+ `/api/webhooks/100pay`). For portability and correctness, prefer using a
+ server-issued callback URL aligned with your callback relay endpoint.
 
 ## Packages in Use
 

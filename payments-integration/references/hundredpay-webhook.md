@@ -1,4 +1,17 @@
-# 100Pay Webhook Settlement (Current Implementation)
+# 100Pay Webhook Settlement
+
+This document describes webhook settlement principles and then maps to the
+current repository implementation.
+
+## Generic Principles
+
+1. Authenticate webhook request (signature or shared token).
+2. Normalize provider payload into internal shape.
+3. Ignore irrelevant events safely.
+4. Enforce idempotency with event IDs and transaction status gates.
+5. Apply terminal transitions and domain side effects exactly once.
+
+## Repository Mapping
 
 Primary route:
 
@@ -12,7 +25,7 @@ Auth helper:
 
 - `apps/api/src/services/payment/hundredpay.service.ts` (`verifyWebhookToken`)
 
-## Request Authentication
+## Request Authentication (Repository)
 
 The webhook expects header:
 
@@ -24,7 +37,7 @@ Validation uses timing-safe comparison against:
 
 If token is missing/invalid, route returns 400.
 
-## Event Filtering
+## Event Filtering (Repository)
 
 The route normalizes incoming payload and exits early unless:
 
@@ -37,16 +50,16 @@ References are resolved from payload fields such as:
 - `payload.reference`
 - `payload.data.reference`
 
-## Dedupe and Idempotency
+## Dedupe and Idempotency (Repository)
 
 The handler protects against duplicate webhook deliveries by using:
 
-- `meta.processedPaymentEventIds` (payment event id set membership)
+- a persistent processed-event ID set (payment event id membership)
 - transaction status checks (`pending` / `successful` only for relevant branches)
 
 If an event was already processed, it returns 200 (`received: true`) without repeating settlement.
 
-## Status Handling
+## Status Handling (Repository)
 
 Computed provider status comes from `charge.status.value`.
 
@@ -63,29 +76,29 @@ Terminal failure states:
 - `canceled`
 - `expired`
 
-## Settlement Branches
+## Settlement Branches (Repository)
 
 ### A) Wallet top-up (`meta.kind = wallet_topup`)
 
 - Non-success: updates payment status metadata and exits.
-- Success: calls `settleSuccessfulHundredPayCreditTransaction(...)`.
-- This function credits wallet once and updates resolved metadata fields.
+- Success: runs idempotent settlement logic.
+- Settlement credits wallet once and updates resolved metadata fields.
 
 ### B) Number rental deposit (`meta.kind = number_rental_deposit`)
 
 - On failure states while pending:
   - marks transaction failed
   - records cancel reason
-  - releases reserved number lock (`releaseRentalDepositReservation`)
+  - releases reserved number lock
 - On success:
   - marks transaction successful if pending
-  - triggers rental creation (`createRentalFromDepositPayment`)
-  - stores `meta.rentalCreated` and `meta.rentalId`
+  - triggers rental creation
+  - stores settlement markers for created rental
 
 ### C) Other 100Pay credit flows
 
 For non-rental-deposit credit flows (including top-up and similar provider credits),
-settlement resolves through `settleSuccessfulHundredPayCreditTransaction(...)`.
+settlement resolves through the same idempotent credit settlement path.
 
 ## Relationship with Client Verification
 
@@ -110,3 +123,9 @@ The route is resilient to minor payload shape differences and extracts:
 - total paid amount
 
 Unknown or irrelevant events still return 200 when safe to ignore.
+
+Generic note:
+
+- Different providers use different event names and nested payload keys.
+- Keep extraction logic centralized so route handlers stay stable if payload
+  shape changes.
