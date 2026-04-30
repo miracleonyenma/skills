@@ -5,7 +5,7 @@ description: 'Build schema-driven, self-documenting Express APIs using Zod v4 th
 
 # Zod → OpenAPI: Schema-Driven Self-Documenting API
 
-This skill documents the production pattern used in this monorepo to automatically generate a complete OpenAPI 3.0 specification directly from Zod schemas attached to Express routes — no YAML files, no decorators, no separate schema registry to maintain.
+This skill covers a production-proven pattern for automatically generating a complete OpenAPI 3.0 specification directly from Zod schemas attached to Express routes — no YAML files, no decorators, no separate schema registry to maintain. The pattern works in any Express + TypeScript project, monorepo or standalone.
 
 ## Open-Source Safety
 
@@ -46,18 +46,19 @@ Key design decisions:
 
 ---
 
-## File Map (This Repository)
+## Suggested File Layout
 
-| Topic | File |
+Adopt whatever paths fit your project structure. This is the conventional layout used in the reference implementation:
+
+| Topic | Suggested path |
 |---|---|
-| Request validation middleware + schema key | `apps/api/src/utils/validation.ts` |
-| OpenAPI spec builder (introspects routes) | `apps/api/src/utils/swagger.ts` |
-| Route registration + `mountedRoutes` array | `apps/api/src/routes/index.ts` |
-| Component/reusable schema registry | `packages/shared/src/lib/schemas/openapi.ts` |
-| Spec generation script (build artifact) | `apps/api/scripts/generate-openapi.ts` |
-| Example route (auth) | `apps/api/src/routes/auth.ts` |
-| Example route (wallets) | `apps/api/src/routes/wallets.ts` |
-| Scalar docs + spec serving in Express | `apps/api/src/index.ts` |
+| Request validation middleware + schema key | `src/utils/validation.ts` |
+| OpenAPI spec builder (introspects routes) | `src/utils/swagger.ts` |
+| Route registration + `mountedRoutes` array | `src/routes/index.ts` |
+| Component/reusable schema registry | `src/schemas/components.ts` (or a shared package) |
+| Spec generation script (build artifact) | `scripts/generate-openapi.ts` |
+| Route files | `src/routes/*.ts` |
+| Scalar docs + spec serving in Express | `src/index.ts` |
 
 See [reference sub-documents](#reference-sub-documents) for deep-dives.
 
@@ -79,7 +80,7 @@ No `zod-to-json-schema`, `zod-openapi`, or `@anatine/zod-openapi` packages are n
 ### `validateSchema` — validation + schema attachment
 
 ```ts
-// apps/api/src/utils/validation.ts
+// src/utils/validation.ts
 import { Request, Response, NextFunction } from "express";
 import { ZodError, type ZodTypeAny } from "zod";
 
@@ -145,7 +146,7 @@ Both factories work the same way: create a function, attach the schema as a prop
 Every router is registered in a central `mountedRoutes` array with a `basePath` and a `tag`:
 
 ```ts
-// apps/api/src/routes/index.ts
+// src/routes/index.ts
 import type { Router } from "express";
 
 export type MountedRoute = {
@@ -155,14 +156,14 @@ export type MountedRoute = {
 };
 
 export const mountedRoutes: MountedRoute[] = [
-  { basePath: "/v1/auth",         tag: "Auth",         router: authRouter },
-  { basePath: "/v1/wallets",      tag: "Wallets",      router: walletsRouter },
-  { basePath: "/v1/payments",     tag: "Payments",     router: paymentsRouter },
+  { basePath: "/v1/auth",     tag: "Auth",     router: authRouter },
+  { basePath: "/v1/users",    tag: "Users",    router: usersRouter },
+  { basePath: "/v1/products", tag: "Products", router: productsRouter },
   // ... all routers
 ];
 ```
 
-In `index.ts` (Express app entry):
+In `src/index.ts` (Express app entry):
 
 ```ts
 for (const route of mountedRoutes) {
@@ -191,7 +192,7 @@ const router = Router();
 const createItemSchema = {
   body: z.object({
     name: z.string().trim().min(1).meta({ description: "Display name", example: "My Item" }),
-    amount: z.coerce.number().positive().meta({ description: "Amount in NGN", example: 1000 }),
+    amount: z.coerce.number().positive().meta({ description: "Amount in the primary currency", example: 1000 }),
     category: z.enum(["alpha", "beta"]).optional(),
   }),
 };
@@ -348,16 +349,16 @@ export const swaggerSpec = {
 Reusable/named schemas live in a shared package and are registered in `components.schemas`:
 
 ```ts
-// packages/shared/src/lib/schemas/openapi.ts
+// src/schemas/components.ts  (or packages/shared/src/schemas/openapi.ts in a monorepo)
 import { z } from "zod";
 
 export const UserSchema = z.object({
-  _id: z.string().meta({ example: "664abc..." }),
+  id: z.string().meta({ example: "usr_01HX..." }),
   email: z.string().email().meta({ example: "jane@example.com" }),
-  firstName: z.string().optional(),
-  role: z.enum(["user", "admin"]).optional(),
+  name: z.string().optional().meta({ example: "Jane Doe" }),
+  role: z.enum(["user", "admin"]).optional().meta({ example: "user" }),
   createdAt: z.string().datetime().optional(),
-}).meta({ title: "User", description: "Platform user record" });
+}).meta({ title: "User", description: "Authenticated platform user" });
 
 export const PaginationSchema = z.object({
   page: z.number().int().meta({ example: 1 }),
@@ -441,7 +442,9 @@ Add to `package.json`:
 Some routes (cron jobs, internal admin endpoints) should not appear in public docs. Tag them with a private tag name and filter them out:
 
 ```ts
-const PRIVATE_TAGS = new Set(["Admin", "Cron", "Admin Notifications"]);
+// Adapt this set to your own tag names — any route with one of these tags
+// will be excluded from the public spec but kept in the admin spec.
+const PRIVATE_TAGS = new Set(["Admin", "Cron", "Internal"]);
 
 function filterPrivatePaths(spec: typeof swaggerSpec): typeof swaggerSpec {
   const filteredPaths: Record<string, unknown> = {};
@@ -484,19 +487,19 @@ All Zod v4 schema types support `.meta()`. These fields map to OpenAPI annotatio
 z.string()
   .min(1)
   .meta({
-    description: "The user's pay tag (short alphanumeric handle)",
+    description: "Unique short handle chosen by the user at registration",
     example: "jane42",
     deprecated: false,
   });
 ```
 
-> **Zod v4 note:** `.meta()` is the v4 replacement for `.describe()` and `.openapi()` from older plugins. Do not use `zod-to-json-schema` or `@anatine/zod-openapi` — they are unnecessary and incompatible.
+> **Zod v4 note:** `.meta()` is the v4 replacement for `.describe()` and `.openapi()` from older plugins. Do not use `zod-to-json-schema` or `@anatine/zod-openapi` — they are unnecessary and incompatible with Zod v4.
 
 ---
 
 ## Migration Checklist (Existing API → Schema-Driven)
 
-Use this to migrate any Express route file to the self-documenting pattern:
+Use this to migrate any Express route file to the self-documenting pattern. Each item is independent — you can migrate one route file at a time without breaking the rest of the API.
 
 ### Per route file
 
@@ -518,12 +521,15 @@ Use this to migrate any Express route file to the self-documenting pattern:
 - [ ] Define a `z.object({...}).meta({ title: "ModelName" })` in the shared schema registry
 - [ ] Add it to `OpenApiComponentSchemas` map and `buildOpenApiComponentSchemas()`
 
-### Global
+### Global (one-time setup)
 
-- [ ] Install `@scalar/express-api-reference` and wire up `/docs` endpoint
+- [ ] Create `src/utils/validation.ts` with `validateSchema` and `describeResponses`
+- [ ] Create `src/utils/swagger.ts` with `extractPaths()` and `swaggerSpec`
+- [ ] Create `src/routes/index.ts` with the `mountedRoutes` array
+- [ ] Install `@scalar/express-api-reference` and wire up `/docs` endpoint in `src/index.ts`
 - [ ] Add `gen-docs` script to `package.json`
-- [ ] Add `openapi.json` to `.gitignore` or commit it as a build artifact (pick one, be consistent)
-- [ ] Identify private tags and add them to `PRIVATE_TAGS` filter set
+- [ ] Add generated `openapi.json` to `.gitignore` or commit it as a build artifact (pick one, be consistent)
+- [ ] Define your `PRIVATE_TAGS` set for any internal/admin route groups you want excluded from the public spec
 
 ---
 

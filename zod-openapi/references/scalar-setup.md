@@ -1,6 +1,6 @@
 # Scalar UI Configuration and Auth
 
-[Scalar](https://scalar.com) is the interactive API documentation UI used in this project. It renders the OpenAPI spec as a beautiful, interactive reference with a built-in API client.
+[Scalar](https://scalar.com) renders your OpenAPI spec as a beautiful, interactive reference with a built-in API client. It is the recommended docs UI for this pattern because it consumes the spec directly from your Express server with a single `app.use()` call \u2014 no separate deploy or hosting needed.
 
 ## Installation
 
@@ -12,9 +12,9 @@ npm install @scalar/express-api-reference
 
 ```ts
 import { apiReference } from "@scalar/express-api-reference";
-import { swaggerSpec, publicSwaggerSpec } from "./utils/swagger";
+import { swaggerSpec, publicSwaggerSpec } from "./utils/swagger"; // adjust path
 
-// Public-facing docs — admin routes stripped
+// Public-facing docs — private/admin routes stripped
 app.use("/docs", apiReference({
   spec: { content: publicSwaggerSpec },
   theme: "purple",
@@ -173,7 +173,7 @@ parameters: [
 
 ## Build-Time Spec Generation
 
-At build time, write the spec to a static JSON file for hosting or CI consumption:
+At build time, write the spec to a static JSON file for hosting, CI consumption, or Postman import:
 
 ```ts
 // scripts/generate-openapi.ts
@@ -185,6 +185,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: ".env" });
 
 function generate() {
+  // require() triggers module evaluation, which builds the spec at import time
   const { swaggerSpec, publicSwaggerSpec } = require("../src/utils/swagger");
 
   const publicPath = path.resolve(__dirname, "../public/openapi.json");
@@ -201,6 +202,8 @@ function generate() {
 generate();
 ```
 
+Adjust the `require()` path if your compiled output or `ts-node` entry point differs.
+
 `package.json` scripts:
 
 ```json
@@ -216,6 +219,7 @@ generate();
 ## Tips
 
 - The spec is generated at **import time** — calling `require("../src/utils/swagger")` in the script is sufficient. No HTTP server needs to be running.
-- If the API URL differs between environments, set `API_URL` in `.env` before running `gen-docs`. The `servers[].url` in the spec is read from `process.env.API_URL`.
+- Set the `API_URL` environment variable before running `gen-docs` if your server URL differs between environments. The `servers[].url` in the spec is read from `process.env.API_URL`.
 - Commit `public/openapi.json` if downstream consumers (Postman collections, client generators, documentation sites) depend on it. Otherwise add it to `.gitignore` and generate on CI.
-- The Scalar `apiReference` middleware streams HTML, so it must be mounted **after** JSON routes in Express. Express matches routes in registration order.
+- Mount the Scalar `apiReference` middleware **after** your JSON routes in Express. Express matches routes in registration order, and Scalar streams HTML.
+- To use a different API reference UI (Swagger UI, Redoc, etc.), just serve `openapi.json` and point that tool at it — the spec format is standard OpenAPI 3.0.

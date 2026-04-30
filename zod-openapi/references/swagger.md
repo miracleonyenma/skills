@@ -5,7 +5,7 @@ This file builds the OpenAPI spec by introspecting the Express router stack. It 
 ## Complete Implementation
 
 ```ts
-import { buildOpenApiComponentSchemas } from "@your-org/shared"; // or inline
+import { buildOpenApiComponentSchemas } from "../schemas/components"; // adjust path for your project
 import { z, type ZodTypeAny } from "zod";
 import { mountedRoutes } from "../routes";
 import {
@@ -364,5 +364,6 @@ export const publicSwaggerSpec = filterPrivatePaths(swaggerSpec);
 
 - `swaggerSpec` is built once at module load time. It is not recalculated per request.
 - `extractPaths()` walks the live Express router stack — it sees whatever middleware was registered before this module was imported.
-- Import ordering matters: all routers must be imported and registered in `mountedRoutes` before `swagger.ts` is first imported. The standard pattern (importing `swagger.ts` only in `index.ts` after all route imports) handles this naturally.
-- Adding a new route to `mountedRoutes` automatically includes it in the spec. No other files need updating.
+- Import ordering matters: all routers must be imported and registered in `mountedRoutes` before `swagger.ts` (or whatever you name this file) is first imported. The standard pattern — importing the spec builder only in your app entry file (`src/index.ts`) after all route imports — handles this naturally.
+- Adding a new router to `mountedRoutes` automatically includes it in the spec. No other files need updating.
+- The `PRIVATE_TAGS` set is the only place where you decide which route groups are excluded from the public spec. Add any tag name you want to hide from public consumers.

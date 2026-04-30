@@ -1,6 +1,6 @@
 # Migration Guide — Existing Route → Schema-Driven
 
-This guide walks through converting a real Express route file that uses ad-hoc validation (manual `if` checks, no schema) into the fully schema-driven, self-documenting pattern.
+This guide walks through converting a real Express route file that uses ad-hoc validation (manual `if` checks, no schema) into the fully schema-driven, self-documenting pattern. The before/after examples use a generic `orders` resource — substitute your own domain models.
 
 ---
 
@@ -65,7 +65,7 @@ This route has no OpenAPI documentation, inconsistent error formats, and scatter
 ## After: Schema-Driven with Auto-Generated Docs
 
 ```ts
-// AFTER: routes/orders.ts
+// AFTER: src/routes/orders.ts
 import { Router, Response } from "express";
 import { z } from "zod";
 import { Order } from "../models/order";
@@ -294,10 +294,10 @@ body: z.object({
 
 ## Rollout Strategy for Large APIs
 
-For large APIs with many routes, migrate incrementally:
+For APIs with many existing routes, migrate incrementally. The pattern is additive — routes without `validateSchema` still work, they just won’t have documented request schemas in the spec.
 
-1. **Install infrastructure first** — add `validation.ts`, `swagger.ts`, `mountedRoutes` pattern, and `gen-docs` script. Run `gen-docs` — it will produce a sparse spec with no schemas (routes without `validateSchema` get no documented request body).
-2. **Migrate high-traffic routes first** — start with routes that are actively used by clients or need documentation most urgently.
+1. **Install infrastructure first** — create `validation.ts`, `swagger.ts`, and the `mountedRoutes` array, add `gen-docs` to `package.json`. Run `gen-docs` — it produces a sparse spec with placeholder 200 responses for undocumented routes.
+2. **Migrate high-traffic or public-facing routes first** — start with routes that are actively consumed by clients or need documentation most urgently.
 3. **Run `npm run gen-docs` after each route file** — confirm the route appears correctly in the spec before moving on.
-4. **Tag private routes immediately** — add admin/internal routes to `PRIVATE_TAGS` from the start to avoid leaking them in the public spec.
-5. **Add component schemas last** — once routes are migrated, extract repeated response shapes into the component registry.
+4. **Tag private routes from day one** — add internal/admin routes to `PRIVATE_TAGS` immediately to prevent them appearing in public docs.
+5. **Add component schemas last** — once routes are migrated, extract repeated response shapes into the component registry to clean up duplication.

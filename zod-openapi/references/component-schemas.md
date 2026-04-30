@@ -1,16 +1,18 @@
 # Component Schema Registry
 
-Named/reusable schemas are centralized in a shared package (or a dedicated file) and registered in `components.schemas` of the OpenAPI spec. This lets Scalar UI display rich model documentation and enables `$ref` linking between schemas.
+Named/reusable schemas are centralized in one file and registered in `components.schemas` of the OpenAPI spec. This lets Scalar UI display rich model documentation and enables cross-referencing between schemas.
 
 ## File Location
 
-In a monorepo: `packages/shared/src/lib/schemas/openapi.ts`
+- **Single-repo Express app:** `src/schemas/components.ts`
+- **Monorepo:** `packages/shared/src/schemas/openapi.ts` (or equivalent shared package)
 
-In a single-repo Express app: `src/schemas/components.ts`
+The spec builder (`swagger.ts`) imports `buildOpenApiComponentSchemas` from this file.
 
 ## Pattern
 
 ```ts
+// src/schemas/components.ts  (or packages/shared/src/schemas/openapi.ts in a monorepo)
 import { z } from "zod";
 
 // ─── Primitive helpers ────────────────────────────────────────────────────────
@@ -22,15 +24,14 @@ const DateTimeSchema = z.string().datetime().meta({ example: "2026-01-15T10:00:0
 
 export const UserSchema = z
   .object({
-    _id: ObjectIdSchema.meta({ example: "664abc1234567890abcd1001" }),
+    id: z.string().meta({ example: "usr_01HX..." }),
     email: z.string().email().meta({ example: "jane@example.com" }),
-    firstName: z.string().optional().meta({ example: "Jane" }),
-    lastName: z.string().optional().meta({ example: "Doe" }),
+    name: z.string().optional().meta({ example: "Jane Doe" }),
     role: z.enum(["user", "admin"]).optional().meta({ example: "user" }),
     createdAt: DateTimeSchema.optional(),
     updatedAt: DateTimeSchema.optional(),
   })
-  .meta({ title: "User", description: "Platform user record" });
+  .meta({ title: "User", description: "Authenticated platform user" });
 
 export const PaginationSchema = z
   .object({
@@ -111,11 +112,11 @@ export type PaginationDto = z.infer<typeof PaginationSchema>;
 
 ## TypeScript Inference from Component Schemas
 
-For API clients or server handlers, infer types directly from the Zod schema:
+For API clients or server handlers, infer types directly from the Zod schema. This keeps your TypeScript types in sync with the spec automatically — no separate type definitions to maintain:
 
 ```ts
 import type { z } from "zod";
-import { UserSchema, PaginationSchema } from "@your-org/shared";
+import { UserSchema, PaginationSchema } from "../schemas/components"; // adjust path
 
 type User = z.infer<typeof UserSchema>;
 type Pagination = z.infer<typeof PaginationSchema>;

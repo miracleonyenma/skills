@@ -1,6 +1,6 @@
 # `validation.ts` — Full Implementation Reference
 
-This file is the core of the schema-driven approach. It provides two exports:
+Create this file at `src/utils/validation.ts` (or wherever your utilities live). It is the only file that needs to be wired up once; after that, every route file just imports `validateSchema` and `describeResponses`. It provides two exports:
 
 - `validateSchema` — validates incoming requests and attaches schemas for spec generation
 - `describeResponses` — a no-op marker middleware that carries response schemas for spec generation
@@ -15,7 +15,8 @@ import { ZodError, type ZodTypeAny } from "zod";
 
 /**
  * Property key used to attach the request validation schema to the
- * middleware function. swagger.ts reads this when building the OpenAPI spec.
+ * middleware function. The spec builder (swagger.ts) reads this key
+ * when walking the Express router stack to build the OpenAPI spec.
  */
 export const VALIDATION_SCHEMA_KEY = "__validationSchema" as const;
 
@@ -99,7 +100,7 @@ export const validateSchema = (schema: RequestValidationSchema) => {
 
   // Attach schema to the middleware function itself. This is the key mechanism:
   // the function is a plain JS object, so any property can be assigned to it.
-  // swagger.ts reads this property when walking route.stack.
+  // The spec builder reads this property when walking route.stack.
   (validator as any)[VALIDATION_SCHEMA_KEY] = schema satisfies RequestValidationSchema;
 
   return validator;
@@ -127,9 +128,9 @@ export const describeResponses = (schemas: ResponseSchemaMap) => {
 
 Express stores middleware in `route.stack` as an array of layer objects. Each layer has a `handle` property pointing to the middleware function. By attaching schema metadata directly as a property on the function object, we can walk `route.stack` and retrieve it without any external map or registry. This keeps the system stateless and avoids memory leaks or ordering bugs.
 
-## Error Response Shape
+## Customizing the Error Response
 
-On validation failure, the middleware always returns:
+The error message string and response shape are yours to adapt. The structure below is the reference implementation — change the `message` and any field names to match your project's conventions:
 
 ```json
 {
@@ -142,7 +143,7 @@ On validation failure, the middleware always returns:
 }
 ```
 
-This shape should be defined as a Zod schema and included in `describeResponses({ 400: ... })` for all routes that use `validateSchema`.
+This shape should be defined as a Zod schema and included in `describeResponses({ 400: ... })` for all routes that use `validateSchema`, so it appears in the generated spec.
 
 ## TypeScript Tip — Typed Request Bodies
 
