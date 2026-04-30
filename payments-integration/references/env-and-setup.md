@@ -43,9 +43,13 @@ HUNDREDPAY_SECRET_API_KEY=sk_xxx
 HUNDREDPAY_WEBHOOK_SECRET=shared_verification_token
 HUNDREDPAY_REQUEST_TIMEOUT_MS=15000
 
-# Paystack (used in same payments router)
+# Paystack
 PAYSTACK_SECRET_KEY=sk_xxx
 PAYSTACK_WEBHOOK_SECRET=whsec_xxx
+
+# Flutterwave
+FLUTTERWAVE_V3_PRIVATE_KEY=FLWSECK_xxx
+FLUTTERWAVE_V3_WEBHOOK_SECRET=your_flw_webhook_secret
 
 # App routing
 FRONTEND_URL=https://app.example.com
@@ -65,7 +69,10 @@ Notes:
 - `NEXT_PUBLIC_HUNDREDPAY_API_KEY` is used by `@100pay-hq/checkout` on the web.
 - `HUNDREDPAY_SECRET_API_KEY` is used for server-side verification calls.
 - `HUNDREDPAY_WEBHOOK_SECRET` must match provider webhook token.
+- `FLUTTERWAVE_V3_PRIVATE_KEY` is used for both Bills API (VTU) and Hosted Checkout.
+- `FLUTTERWAVE_V3_WEBHOOK_SECRET` is used to verify Flutterwave webhooks via HMAC-SHA256.
 - `API_URL` and `FRONTEND_URL` should point to your deployment domains.
+- Flutterwave does not require any public/client-side key — all calls are server-side.
 
 ## Route Wiring (Repository)
 
